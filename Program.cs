@@ -214,6 +214,11 @@ public static partial class Program
             Log("Path not found (skipping): " + path);
             return;
         }
+        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+        {
+            Log("Skipping symbolic link: " + path);
+            return;
+        }
         if (Directory.Exists(path))
         {
             Log("Scanning folder: " + path);
