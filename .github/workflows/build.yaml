@@ -17,15 +17,6 @@ jobs:
           - os: ubuntu-latest
             rid: linux-x64
             aot: true
-          - os: linux-arm64-latest
-            rid: linux-arm64
-            aot: true
-          - os: windows-arm64-latest
-            rid: win-arm64
-            aot: true
-          - os: windows-latest
-            rid: win-x86
-            aot: false
 
     runs-on: ${{ matrix.os }}
 
