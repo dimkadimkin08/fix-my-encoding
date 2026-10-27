@@ -193,24 +193,30 @@ public static partial class Program
         IEnumerable<string> extensions,
         int? windowsCodePage,
         bool includeExtensionlessFiles,
+        bool isDryRun,
         int maxDepth = 0
     )
     {
+        void Log(string message, bool isError = false)
+        {
+            if (!isDryRun)
+                Console.WriteLine(message);
+            else if (isError)
+                Console.WriteLine("[DRY RUN ERROR] " + message);
+        }
         if (!extensions.Any())
         {
-            Console.WriteLine(
-                "Provided 0 extensions to filter - all files will be skipped (aborting)"
-            );
+            Log("Provided 0 extensions to filter - all files will be skipped (aborting)");
             return;
         }
         if (path == null || !Path.Exists(path))
         {
-            Console.WriteLine("Path not found (skipping): " + path);
+            Log("Path not found (skipping): " + path);
             return;
         }
         if (Directory.Exists(path))
         {
-            Console.WriteLine("Scanning folder: " + path);
+            Log("Scanning folder: " + path);
             scannedDirs++;
             if (maxDepth != 0)
                 foreach (var childDir in Directory.GetDirectories(path))
@@ -223,6 +229,7 @@ public static partial class Program
                         extensions,
                         windowsCodePage,
                         includeExtensionlessFiles,
+                        isDryRun,
                         maxDepth > 0 ? maxDepth - 1 : maxDepth
                     );
             foreach (var childFile in Directory.GetFiles(path))
@@ -235,12 +242,13 @@ public static partial class Program
                     extensions,
                     windowsCodePage,
                     includeExtensionlessFiles,
+                    isDryRun,
                     maxDepth
                 );
         }
         else if (File.Exists(path))
         {
-            Console.WriteLine("Scanning file: " + path);
+            Log("Scanning file: " + path);
             scannedFiles++;
             try
             {
@@ -259,7 +267,7 @@ public static partial class Program
 
                 if (!allowedByName && !allowedByExtension)
                 {
-                    Console.WriteLine("Skipping file (extension does not match): " + path);
+                    Log("Skipping file (extension does not match): " + path);
                     return;
                 }
 
@@ -270,9 +278,7 @@ public static partial class Program
                 );
                 if (text == null)
                 {
-                    Console.WriteLine(
-                        "Skipping file (not recognized as supported text file): " + path
-                    );
+                    Log("Skipping file (not recognized as supported text file): " + path);
                     return;
                 }
 
@@ -286,25 +292,27 @@ public static partial class Program
 
                 if (!wasUTF8 || hadCRLF || hadCR)
                 {
-                    Console.WriteLine(
+                    Log(
                         $"Editing file (wasUTF8={wasUTF8} hadCRLF={hadCRLF} hadCR={hadCR}): {path}"
                     );
-                    File.WriteAllText(path, text, Encoding.UTF8);
-                    Console.WriteLine($"Writing done: " + path);
+                    if (!isDryRun)
+                        File.WriteAllText(path, text, Encoding.UTF8);
+                    Log($"Writing done: " + path);
                     editedFiles++;
                 }
             }
             catch (Exception e)
             {
                 errors++;
-                Console.WriteLine("An error occurred while processing file (skipping): " + path);
-                Console.WriteLine(e.GetType() + ": " + e.Message);
-                Console.WriteLine(e.StackTrace);
+                Log("An error occurred while processing file (skipping): " + path, isError: true);
+                Log(e.GetType() + ": " + e.Message, isError: true);
+                if (e.StackTrace != null)
+                    Log(e.StackTrace, isError: true);
             }
         }
         else
         {
-            Console.WriteLine("Failed to resolve path (skipping): " + path);
+            Log("Failed to resolve path (skipping): " + path);
         }
     }
 
@@ -432,7 +440,9 @@ public static partial class Program
             _ => null,
         };
 
-        Console.Write("Enter max depth (use a negative value or leave empty for unlimited depth)\n> ");
+        Console.Write(
+            "Enter max depth (use a negative value or leave empty for unlimited depth)\n> "
+        );
         if (!int.TryParse(Console.ReadLine()!, out int maxDepth))
         {
             Console.WriteLine("Failed to parse integer, using default value (-1)");
@@ -457,6 +467,38 @@ public static partial class Program
             "Inside folder: " + folderPath,
             "Max depth: " + maxDepth + (maxDepth < 0 ? " (unlimited)" : ""),
         ];
+
+        Console.WriteLine("Please wait. Performing dry run...");
+
+        int dry_scannedDirs = 0;
+        int dry_scannedFiles = 0;
+        int dry_editedFiles = 0;
+        int dry_errors = 0;
+        Process(
+            folderPath,
+            ref dry_scannedDirs,
+            ref dry_scannedFiles,
+            ref dry_editedFiles,
+            ref dry_errors,
+            isDryRun: true,
+            extensions: fileExtensions,
+            windowsCodePage: windowsCodePage,
+            includeExtensionlessFiles: includeExtensionlessFiles,
+            maxDepth: maxDepth
+        );
+
+        if (dry_errors > 0)
+            Console.WriteLine(
+                $"\n {dry_errors} ERRORS occurred during dry run. Make sure you have checked the error logs above."
+            );
+
+        Console.Write("Do you want to proceed? [y/N]: ");
+        if (!Console.ReadLine()!.Trim().Equals("y", StringComparison.CurrentCultureIgnoreCase))
+        {
+            Console.WriteLine("Aborting.");
+            return;
+        }
+
         string separator = new('-', messages.OrderBy(item => item.Length).Last().Length);
         string title = "CHECK IF THIS IS CORRECT";
         int titlePadding = (separator.Length - title.Length) / 2;
@@ -469,7 +511,13 @@ public static partial class Program
             Console.WriteLine(message);
         Console.WriteLine(separator);
 
-        Console.Write("Proceed? [y/N]: ");
+        Console.WriteLine("Dry-run complete (no files are modified yet).");
+        Console.WriteLine("If you want to proceed, this program will:");
+        Console.WriteLine($" - SCAN around {dry_scannedDirs} directories");
+        Console.WriteLine($" - READ around {dry_scannedFiles} files");
+        Console.WriteLine($" - WRITE around {dry_editedFiles} files WITHOUT ANY BACKUPS");
+
+        Console.Write("\n Do you really want to proceed? [y/N]: ");
         if (!Console.ReadLine()!.Trim().Equals("y", StringComparison.CurrentCultureIgnoreCase))
         {
             Console.WriteLine("Aborting.");
@@ -487,6 +535,7 @@ public static partial class Program
             ref scannedFiles,
             ref editedFiles,
             ref errors,
+            isDryRun: false,
             extensions: fileExtensions,
             windowsCodePage: windowsCodePage,
             includeExtensionlessFiles: includeExtensionlessFiles,
