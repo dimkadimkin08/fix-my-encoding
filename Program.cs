@@ -499,13 +499,24 @@ public static partial class Program
             return;
         }
 
-        string separator = new('-', messages.OrderBy(item => item.Length).Last().Length);
+        int width;
+        try
+        {
+            width = Console.WindowWidth;
+        }
+        catch (IOException)
+        {
+            width = 40;
+        }
+
+        if (width < 40)
+            width = 40;
+
+        string separator = new('-', width);
         string title = "CHECK IF THIS IS CORRECT";
         int titlePadding = (separator.Length - title.Length) / 2;
-        int titleEnding = separator.Length - title.Length - titlePadding;
-        if (titlePadding > 0)
-            title = new string('-', titlePadding) + title + new string('-', titleEnding);
-        Console.WriteLine(title);
+        Console.WriteLine(separator);
+        Console.WriteLine(new string(' ', titlePadding) + title);
         Console.WriteLine(separator);
         foreach (var message in messages)
             Console.WriteLine(message);
